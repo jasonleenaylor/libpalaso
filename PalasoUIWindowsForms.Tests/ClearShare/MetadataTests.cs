@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Text;
 using NUnit.Framework;
 using Palaso.IO;
+using Palaso.TestUtilities;
 using Palaso.UI.WindowsForms.ClearShare;
 using Palaso.UI.WindowsForms.ClearShare.WinFormsUI;
 using Palaso.UI.WindowsForms.ImageToolbox;
@@ -116,13 +118,44 @@ namespace PalasoUIWindowsForms.Tests.ClearShare
 			Assert.AreEqual("http://somewhere.com", Metadata.FromFile(_tempFile.Path).AttributionUrl);
 		}
 
+        [Test]
+        public void RoundTripPng_AttributionName()
+        {
+            _outgoing.Creator = "joe shmo";
+            _outgoing.Write();
+            Assert.AreEqual("joe shmo", Metadata.FromFile(_tempFile.Path).Creator);
+        }
+
 		[Test]
-		public void RoundTripPng_AttributionName()
+		public void RoundTripPng_InPathWithNonAsciiCharacters()
 		{
-			_outgoing.Creator = "joe shmo";
-			_outgoing.Write();
-			Assert.AreEqual("joe shmo", Metadata.FromFile(_tempFile.Path).Creator);
+            var mediaFile = new Bitmap(10, 10);
+		    using (var folder = new TemporaryFolder("LibPalaso exiftool Test with non-áscii chárácters"))
+		    {
+		        var path = folder.Combine("test.png");
+		        mediaFile.Save(path);
+		        var outgoing = Metadata.FromFile(path);
+
+		        outgoing.Creator = "joe shmo";
+		        outgoing.Write();
+		        Assert.AreEqual("joe shmo", Metadata.FromFile(path).Creator);
+		    }
 		}
+        [Test]
+        public void RoundTripPng_FileNameHasNonAsciiCharacters()
+        {
+            var mediaFile = new Bitmap(10, 10);
+            using (var folder = new TemporaryFolder("LibPalaso exiftool Test"))
+            {
+                var path = folder.Combine("Love these non-áscii chárácters.png");
+                mediaFile.Save(path);
+                var outgoing = Metadata.FromFile(path);
+
+                outgoing.Creator = "joe shmo";
+                outgoing.Write();
+                Assert.AreEqual("joe shmo", Metadata.FromFile(path).Creator);
+            }
+        }
 
 
 		[Test]

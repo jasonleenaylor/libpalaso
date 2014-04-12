@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Threading;
+using Palaso.IO;
 using Palaso.Progress;
 
 namespace Palaso.CommandLineProcessing
@@ -35,10 +36,10 @@ namespace Palaso.CommandLineProcessing
 		/// <summary>
 		///
 		/// </summary>
-		/// <param name="exePath"></param>
+        /// <param name="exePath">On Windows, this will be made encoding safe by making 8.3</param>
 		/// <param name="arguments"></param>
 		/// <param name="encoding"></param>
-		/// <param name="fromDirectory"></param>
+		/// <param name="fromDirectory">On Windows, this will be made encoding safe by making 8.3</param>
 		/// <param name="secondsBeforeTimeOut"></param>
 		/// <param name="progress"></param>
 		/// <param name="actionForReportingProgress"> Normally a simple thing like this: (s)=>progress.WriteVerbose(s). If you pass null, then the old synchronous reader will be used instead, with no feedback to the user as the process runs.
@@ -46,7 +47,8 @@ namespace Palaso.CommandLineProcessing
 		/// <returns></returns>
 		public static ExecutionResult Run(string exePath, string arguments, Encoding encoding, string fromDirectory, int secondsBeforeTimeOut, IProgress progress, Action<string> actionForReportingProgress)
 		{
-			return new CommandLineRunner().Start(exePath, arguments, encoding, fromDirectory, secondsBeforeTimeOut, progress,
+           Debug.WriteLine("CommandLineRunner.Run({0},{1})", exePath, arguments);
+		   return new CommandLineRunner().Start(exePath, arguments, encoding,  fromDirectory, secondsBeforeTimeOut, progress,
 										actionForReportingProgress);
 		}
 
@@ -71,7 +73,7 @@ namespace Palaso.CommandLineProcessing
 			_process.StartInfo.RedirectStandardOutput = true;
 			_process.StartInfo.UseShellExecute = false;
 			_process.StartInfo.CreateNoWindow = true;
-			_process.StartInfo.WorkingDirectory = fromDirectory;
+	        _process.StartInfo.WorkingDirectory = fromDirectory;
 			_process.StartInfo.FileName = exePath;
 			_process.StartInfo.Arguments = arguments;
 			if (encoding != null)
@@ -276,4 +278,54 @@ namespace Palaso.CommandLineProcessing
 		public string Results;
 		public IProgress Progress;
 	}
+
+
+    /// <summary>
+    /// Gives you a copy of the file in the same directory, with the same extension, but guaranteed to not have any non-ascii characters.
+    /// If the file doesn't exist, it doesn't create it (so you get the expected behavior if passing a name to some command line exe that you'd expect)
+    /// This is for use with exiftool (and anything else) that not only can't cope with non-ascii file names, but can't even cope with name made ascii via 8.3-ization
+    /// It make a simply-named file in the same directory and uses that. It doesn't put that file in temp because %temp% could have non-ascii characters in its path.
+    /// </summary>
+    public class TemporaryFileCopy : IDisposable
+    {
+        private string _pathToTheCopy;
+        private bool _doNotCopyBackToOriginal=false;
+        private string _originalPath;
+
+        public TemporaryFileCopy(string filePath)
+        {
+            _originalPath = filePath;
+
+            _pathToTheCopy = Path.Combine(Path.GetDirectoryName(_originalPath),
+                Guid.NewGuid().ToString() + Path.GetExtension(_originalPath));
+
+            if(File.Exists(filePath))
+                File.Copy(_originalPath, _pathToTheCopy);
+        }
+
+        /// <summary>
+        /// Call this if for some reason you don't want it copied bac
+        /// </summary>
+        public void DoNotCopyBackToOriginal()
+        {
+            _doNotCopyBackToOriginal = true;
+        }
+
+        public void Dispose()
+        {
+            if (!_doNotCopyBackToOriginal)
+            {
+                ReplaceOriginalWithCopy();
+            }
+           File.Delete(_pathToTheCopy);
+        }
+
+        private void ReplaceOriginalWithCopy()
+        {
+            if(File.Exists(_pathToTheCopy))
+                File.Replace(_pathToTheCopy, _originalPath, null);
+
+            
+        }
+    }
 }

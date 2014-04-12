@@ -231,7 +231,9 @@ namespace Palaso.UI.WindowsForms.ClearShare
 				{
 					args.Append(" " + assignment.Switch + " ");
 				}
-				var result = CommandLineRunner.Run(exifPath, String.Format("{0} \"{1}\"", args.ToString(), path),
+
+			    //path = FileUtils.MakePathSafeFromEncodingProblems(path);
+                var result = CommandLineRunner.Run(exifPath, String.Format("{0} \"{1}\"", args.ToString(), path),
 												   _commandLineEncoding, Path.GetDirectoryName(path), 20 /*had a possiblefailure at 5: BL-242*/,
 												   new NullProgress());
 				if(result.DidTimeOut)
@@ -389,9 +391,34 @@ namespace Palaso.UI.WindowsForms.ClearShare
 
 			arguments.Append("-charset cp65001 ");//utf-8
 			arguments.AppendFormat("-use MWG ");  //see http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/MWG.html  and http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf
-			arguments.AppendFormat(" \"{0}\"", path);
-			var result = CommandLineRunner.Run(exifToolPath, arguments.ToString(), _commandLineEncoding, Path.GetDirectoryName(_path), 5, new NullProgress());
-			// -XMP-dc:Rights="Copyright SIL International" -XMP-xmpRights:Marked="True" -XMP-cc:License="http://creativecommons.org/licenses/by-sa/2.0/" *.png");
+		    
+            
+            /* NB: our standard 8.3 trick doesn't work with exiftool. exiftool chokes in the process of using the resulting 8.3 name (it appends "_original", which is then later makes for an illegal hypbrid name)
+                path = FileUtils.MakePathSafeFromEncodingProblems(path);
+             *  Instead, we have to go to the trouble of copying the file to a safeul ascii-only copy. Of course we could first find out if this even necessary 
+             *  by looking at the characters, but at this point it's not worth it to me to complicate the code.
+             */
+		    ExecutionResult result;
+            using (var safelyNamedCopy = new TemporaryFileCopy(path))
+		    {
+		        try
+		        {
+                    arguments.AppendFormat(" \"{0}\"", safelyNamedCopy);
+                    result = CommandLineRunner.Run(exifToolPath, arguments.ToString(), _commandLineEncoding,
+                        Path.GetDirectoryName(_path), 5, new NullProgress());
+                }
+		        catch (Exception)
+		        {
+                    safelyNamedCopy.DoNotCopyBackToOriginal();
+		            throw;
+		        }
+
+		        if (result.ExitCode != 0)
+		        {
+		            safelyNamedCopy.DoNotCopyBackToOriginal();
+		        }
+		    }
+		    // -XMP-dc:Rights="Copyright SIL International" -XMP-xmpRights:Marked="True" -XMP-cc:License="http://creativecommons.org/licenses/by-sa/2.0/" *.png");
 
 
 
@@ -500,15 +527,20 @@ namespace Palaso.UI.WindowsForms.ClearShare
 			if(File.Exists(path))
 				File.Delete(path);
 
-			StringBuilder arguments = new StringBuilder();
-			arguments.Append("-charset cp65001 ");//utf-8
-			arguments.AppendFormat("-o \"{0}\"", path);
-			AddAssignmentArguments(arguments);
+            using (var safelyNamedCopy = new TemporaryFileCopy(path))
+            {
+                StringBuilder arguments = new StringBuilder();
+			    arguments.Append("-charset cp65001 ");//utf-8
+                arguments.AppendFormat("-o \"{0}\"", safelyNamedCopy);
+			    AddAssignmentArguments(arguments);
 
 			//arguments.AppendFormat(" -use MWG ");  //see http://www.sno.phy.queensu.ca/~phil/exiftool/TagNames/MWG.html  and http://www.metadataworkinggroup.org/pdf/mwg_guidance.pdf
 
 			var exifToolPath = FileLocator.GetFileDistributedWithApplication("exiftool.exe");
-			var result = CommandLineRunner.Run(exifToolPath, arguments.ToString(), _commandLineEncoding, Path.GetDirectoryName(path), 5, new NullProgress());
+
+
+		        var result = CommandLineRunner.Run(exifToolPath, arguments.ToString(), _commandLineEncoding, Path.GetDirectoryName(path), 5, new NullProgress());
+		    }
 
 		}
 
@@ -535,7 +567,7 @@ namespace Palaso.UI.WindowsForms.ClearShare
 				}
 				StringBuilder arguments = new StringBuilder();
 				arguments.Append("-charset cp65001 ");//utf-8
-				arguments.AppendFormat(" -all -tagsfromfile \"{0}\" -all:all \"{1}\"", path, temp.Path);
+                arguments.AppendFormat(" -all -tagsfromfile \"{0}\" -all:all \"{1}\"", FileUtils.MakePathSafeFromEncodingProblems(path), FileUtils.MakePathSafeFromEncodingProblems(temp.Path));
 				var result = CommandLineRunner.Run(exifToolPath, arguments.ToString(), _commandLineEncoding, Path.GetDirectoryName(path), 5, new NullProgress());
 				LoadProperties(temp.Path, this);
 			}
